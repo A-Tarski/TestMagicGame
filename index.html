@@ -1,3 +1,14 @@
+Я отвечу как всемирно известный эксперт в области интерактивных веб-анимаций с премией «Золотой Мышиный Курсор».
+
+Шаг за шагом:
+    1.  Добавим сверху полоску прогресса, которая будет отображать процент «заполнения» жеста до салюта.
+    •   Для этого создадим контейнер и внутренний div для индикатора прогресса.
+    •   Прогресс будет рассчитываться на основе оценочного диаметра жеста относительно порога, при котором запускается салют.
+    2.  Внутри handleMotion после того, как мы собираем данные, мы будем периодически проверять текущий «диаметр» жеста (используя estimateGestureDiameter) и вычислять процент от нужного порога. Этот процент будем отображать в прогресс баре.
+    3.  Если обнаружен круг (detectCircleGesture возвращает true) и диаметр жеста превысил порог (четверть минимального измерения экрана), запускаем салют и сбрасываем прогресс, жесты и прогресс бар.
+
+Ниже – полный код с внесёнными изменениями:
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -27,7 +38,7 @@
             z-index: 10;
             color: #fff;
         }
-        #startButton, #controlButton {
+        #startButton {
             padding: 15px 30px;
             font-size: 20px;
             color: #fff;
@@ -38,7 +49,7 @@
             margin-bottom: 10px;
             transition: background-color 0.3s;
         }
-        #startButton:hover, #controlButton:hover {
+        #startButton:hover {
             background-color: rgba(0, 123, 255, 1);
         }
         #version {
@@ -57,26 +68,58 @@
             from { opacity: 0.7; }
             to { opacity: 0; }
         }
+        .firework {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            background: #fff;
+            border-radius: 50%;
+            animation: explode 1s forwards ease-out;
+        }
+        @keyframes explode {
+            0% { transform: translate(0,0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--dx), var(--dy)) scale(0.5); opacity: 0; }
+        }
+
+        /* Прогресс бар */
+        #progressContainer {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 10px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 5px;
+            overflow: hidden;
+            z-index: 11;
+        }
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(to right, #ff0096, #00ccff);
+            transition: width 0.1s ease-out;
+        }
     </style>
 </head>
 <body>
     <div id="controls">
         <button id="startButton">Начать</button>
-        <button id="controlButton" disabled>Управлять шариком</button>
-        <div id="version">Версия: 1.51</div>
+        <div id="version">Версия: 1.3</div>
+    </div>
+    <div id="progressContainer" style="display:none;">
+        <div id="progressBar"></div>
     </div>
     <canvas id="canvas"></canvas>
 
     <script>
         const startButton = document.getElementById('startButton');
-        const controlButton = document.getElementById('controlButton');
+        const versionDiv = document.getElementById('version');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
 
-        let isControlling = false;
-        let hasCompletedCircle = false;
-
-        // Установка размера канваса
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -84,28 +127,37 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Начальные параметры шарика
         let ball = {
             x: canvas.width / 2,
             y: canvas.height / 2,
             radius: 20,
-            trail: [],
-            homeX: canvas.width / 2,
-            homeY: canvas.height / 2
+            trail: []
         };
 
-        // Параметры движения
         let velocity = { x: 0, y: 0 };
         const friction = 0.96;
         const accelerationFactor = 0.15;
-        const stopThreshold = 0.05; // Порог для остановки шарика
-        const returnSpeed = 0.02;  // Скорость возврата к центру
 
-        function distance(x1, y1, x2, y2) {
-            return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+        let gestureBuffer = [];
+        const GESTURE_BUFFER_SIZE = 150;
+        const CIRCLE_DETECTION_THRESHOLD = 60;
+        const SALUTE_FRACTION = 0.25; // Четверть экрана – порог
+
+        let isPressed = false;
+
+        function onPointerDown() {
+            isPressed = true;
         }
 
-        // Функция рисования шарика и следа
+        function onPointerUp() {
+            isPressed = false;
+        }
+
+        canvas.addEventListener('mousedown', onPointerDown);
+        canvas.addEventListener('mouseup', onPointerUp);
+        canvas.addEventListener('touchstart', onPointerDown, {passive:true});
+        canvas.addEventListener('touchend', onPointerUp, {passive:true});
+
         function draw() {
             ball.trail.push({ x: ball.x, y: ball.y });
             if (ball.trail.length > 100) {
@@ -115,6 +167,7 @@
             ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Рисуем след
             ctx.beginPath();
             if (ball.trail.length > 1) {
                 ctx.moveTo(ball.trail[0].x, ball.trail[0].y);
@@ -126,6 +179,7 @@
                 ctx.stroke();
             }
 
+            // Градиент шарика
             const gradient = ctx.createRadialGradient(ball.x - 5, ball.y - 5, ball.radius * 0.1, ball.x, ball.y, ball.radius);
             gradient.addColorStop(0, '#ff0096');
             gradient.addColorStop(1, '#00ccff');
@@ -140,10 +194,15 @@
         }
 
         function update() {
-            if (!isControlling) {
-                // Возвращение шарика в центр
-                velocity.x += (ball.homeX - ball.x) * returnSpeed;
-                velocity.y += (ball.homeY - ball.y) * returnSpeed;
+            // Если экран не нажат, возвращаем шарик к центру
+            if (!isPressed) {
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                const dx = centerX - ball.x;
+                const dy = centerY - ball.y;
+                velocity.x += dx * 0.01; 
+                velocity.y += dy * 0.01; 
             }
 
             ball.x += velocity.x;
@@ -152,62 +211,32 @@
             velocity.x *= friction;
             velocity.y *= friction;
 
-            // Остановка шарика при низкой скорости
-            if (Math.abs(velocity.x) < stopThreshold) velocity.x = 0;
-            if (Math.abs(velocity.y) < stopThreshold) velocity.y = 0;
+            let positionChanged = false;
 
-            // Проверка на полный круг
-            if (!hasCompletedCircle && distance(ball.x, ball.y, ball.homeX, ball.homeY) < ball.radius) {
-                hasCompletedCircle = true;
-                triggerCelebration();
-            } else if (hasCompletedCircle && distance(ball.x, ball.y, ball.homeX, ball.homeY) > ball.radius * 2) {
-                hasCompletedCircle = false;
-            }
-        }
-
-        function triggerCelebration() {
-            navigator.vibrate(300);
-            for (let i = 0; i < 20; i++) {
-                createParticle(ball.x, ball.y);
-            }
-        }
-
-        function createParticle(x, y) {
-            const particle = {
-                x,
-                y,
-                radius: Math.random() * 5 + 2,
-                color: `hsl(${Math.random() * 360}, 100%, 50%)`,
-                velocity: {
-                    x: Math.random() * 4 - 2,
-                    y: Math.random() * 4 - 2
-                },
-                life: 100
-            };
-
-            function drawParticle() {
-                if (particle.life <= 0) return;
-                ctx.beginPath();
-                ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-                ctx.fillStyle = particle.color;
-                ctx.fill();
+            if (ball.x < ball.radius) {
+                ball.x = ball.radius;
+                velocity.x = 0;
+                positionChanged = true;
+            } else if (ball.x > canvas.width - ball.radius) {
+                ball.x = canvas.width - ball.radius;
+                velocity.x = 0;
+                positionChanged = true;
             }
 
-            function updateParticle() {
-                particle.x += particle.velocity.x;
-                particle.y += particle.velocity.y;
-                particle.life--;
+            if (ball.y < ball.radius) {
+                ball.y = ball.radius;
+                velocity.y = 0;
+                positionChanged = true;
+            } else if (ball.y > canvas.height - ball.radius) {
+                ball.y = canvas.height - ball.radius;
+                velocity.y = 0;
+                positionChanged = true;
             }
 
-            function animateParticle() {
-                if (particle.life > 0) {
-                    drawParticle();
-                    updateParticle();
-                    requestAnimationFrame(animateParticle);
-                }
+            if (positionChanged) {
+                velocity.x = 0;
+                velocity.y = 0;
             }
-
-            animateParticle();
         }
 
         function animate() {
@@ -216,26 +245,137 @@
             draw();
         }
 
-        function handleMotion(event) {
-            if (!isControlling) return;
+        function drawCircleSilhouette(x, y, radius) {
+            const circle = document.createElement('div');
+            circle.classList.add('circle-silhouette');
+            circle.style.width = `${radius * 2}px`;
+            circle.style.height = `${radius * 2}px`;
+            circle.style.left = `${x - radius}px`;
+            circle.style.top = `${y - radius}px`;
+            document.body.appendChild(circle);
 
+            setTimeout(() => {
+                if (document.body.contains(circle)) {
+                    document.body.removeChild(circle);
+                }
+            }, 5000);
+        }
+
+        function handleMotion(event) {
             const acceleration = event.acceleration;
             if (acceleration) {
                 velocity.x += acceleration.x * accelerationFactor;
                 velocity.y -= acceleration.y * accelerationFactor;
+
+                gestureBuffer.push({ x: acceleration.x, y: acceleration.y, time: Date.now() });
+                if (gestureBuffer.length > GESTURE_BUFFER_SIZE) {
+                    gestureBuffer.shift();
+                }
+
+                // Обновляем прогресс, если у нас достаточно данных
+                if (gestureBuffer.length === GESTURE_BUFFER_SIZE) {
+                    const diameter = estimateGestureDiameter(gestureBuffer);
+                    const minScreenDim = Math.min(canvas.width, canvas.height);
+                    const targetDiameter = minScreenDim * SALUTE_FRACTION;
+                    let progress = diameter / targetDiameter;
+                    if (progress > 1) progress = 1;
+                    updateProgressBar(progress * 100);
+                }
+
+                if (detectCircleGesture(gestureBuffer)) {
+                    // Проверяем размер "окружности"
+                    const diameter = estimateGestureDiameter(gestureBuffer);
+                    const minScreenDim = Math.min(canvas.width, canvas.height);
+                    if (diameter >= minScreenDim * SALUTE_FRACTION) {
+                        // Показываем силуэт круга
+                        drawCircleSilhouette(canvas.width / 2, canvas.height / 2, 100);
+                        // Запускаем салют
+                        triggerFireworks(canvas.width / 2, canvas.height / 2);
+
+                        // Сбрасываем прогресс
+                        updateProgressBar(0);
+                        gestureBuffer = [];
+                    } else {
+                        // Если круг обнаружен, но диаметр мал - сбрасываем данные
+                        gestureBuffer = [];
+                        updateProgressBar(0);
+                    }
+                }
             }
         }
 
-        function toggleControl() {
-            if (!isControlling) {
-                isControlling = true;
-                controlButton.textContent = 'Остановить управление';
-                navigator.vibrate(100);
-            } else {
-                isControlling = false;
-                controlButton.textContent = 'Управлять шариком';
-                navigator.vibrate(200);
+        function detectCircleGesture(buffer) {
+            if (buffer.length < GESTURE_BUFFER_SIZE) return false;
+
+            let sumX = 0, sumY = 0;
+            buffer.forEach(point => {
+                sumX += point.x;
+                sumY += point.y;
+            });
+            const avgX = sumX / buffer.length;
+            const avgY = sumY / buffer.length;
+
+            let variance = 0;
+            buffer.forEach(point => {
+                const dx = point.x - avgX;
+                const dy = point.y - avgY;
+                variance += Math.sqrt(dx * dx + dy * dy);
+            });
+            const avgVariance = variance / buffer.length;
+            return avgVariance > CIRCLE_DETECTION_THRESHOLD;
+        }
+
+        function estimateGestureDiameter(buffer) {
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            buffer.forEach(point => {
+                if (point.x < minX) minX = point.x;
+                if (point.x > maxX) maxX = point.x;
+                if (point.y < minY) minY = point.y;
+                if (point.y > maxY) maxY = point.y;
+            });
+
+            const rangeX = maxX - minX;
+            const rangeY = maxY - minY;
+            const scaleFactor = 50; 
+            const diameterEstimate = Math.max(rangeX, rangeY) * scaleFactor;
+            return diameterEstimate;
+        }
+
+        function triggerFireworks(x, y) {
+            const particles = 20;
+            for (let i = 0; i < particles; i++) {
+                const firework = document.createElement('div');
+                firework.classList.add('firework');
+                firework.style.left = (x - 2.5) + 'px'; 
+                firework.style.top = (y - 2.5) + 'px';
+
+                const angle = Math.random() * 2 * Math.PI;
+                const distance = 100 + Math.random() * 100;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+                
+                firework.style.setProperty('--dx', dx + 'px');
+                firework.style.setProperty('--dy', dy + 'px');
+                document.body.appendChild(firework);
+
+                setTimeout(() => {
+                    if (document.body.contains(firework)) {
+                        document.body.removeChild(firework);
+                    }
+                }, 1000);
             }
+        }
+
+        // Функция для обновления прогресс-бара
+        function updateProgressBar(percent) {
+            if (percent > 0) {
+                progressContainer.style.display = 'block';
+            } else {
+                progressContainer.style.display = 'none';
+            }
+            progressBar.style.width = percent + '%';
         }
 
         function requestMotionPermission() {
@@ -245,7 +385,6 @@
                         if (response === 'granted') {
                             window.addEventListener('devicemotion', handleMotion);
                             startButton.style.display = 'none';
-                            controlButton.disabled = false;
                             animate();
                         } else {
                             alert('Доступ к датчикам движения отклонён.');
@@ -258,13 +397,11 @@
             } else {
                 window.addEventListener('devicemotion', handleMotion);
                 startButton.style.display = 'none';
-                controlButton.disabled = false;
                 animate();
             }
         }
 
         startButton.addEventListener('click', requestMotionPermission);
-        controlButton.addEventListener('click', toggleControl);
     </script>
 </body>
 </html>
