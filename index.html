@@ -1,14 +1,3 @@
-Я отвечу как всемирно известный эксперт в области интерактивных веб-анимаций с премией «Золотой Мышиный Курсор».
-
-Шаг за шагом:
-    1.  Добавим сверху полоску прогресса, которая будет отображать процент «заполнения» жеста до салюта.
-    •   Для этого создадим контейнер и внутренний div для индикатора прогресса.
-    •   Прогресс будет рассчитываться на основе оценочного диаметра жеста относительно порога, при котором запускается салют.
-    2.  Внутри handleMotion после того, как мы собираем данные, мы будем периодически проверять текущий «диаметр» жеста (используя estimateGestureDiameter) и вычислять процент от нужного порога. Этот процент будем отображать в прогресс баре.
-    3.  Если обнаружен круг (detectCircleGesture возвращает true) и диаметр жеста превысил порог (четверть минимального измерения экрана), запускаем салют и сбрасываем прогресс, жесты и прогресс бар.
-
-Ниже – полный код с внесёнными изменениями:
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -68,6 +57,7 @@
             from { opacity: 0.7; }
             to { opacity: 0; }
         }
+        /* Стили для салюта */
         .firework {
             position: absolute;
             width: 5px;
@@ -80,35 +70,12 @@
             0% { transform: translate(0,0) scale(1); opacity: 1; }
             100% { transform: translate(var(--dx), var(--dy)) scale(0.5); opacity: 0; }
         }
-
-        /* Прогресс бар */
-        #progressContainer {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 80%;
-            height: 10px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 5px;
-            overflow: hidden;
-            z-index: 11;
-        }
-        #progressBar {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(to right, #ff0096, #00ccff);
-            transition: width 0.1s ease-out;
-        }
     </style>
 </head>
 <body>
     <div id="controls">
         <button id="startButton">Начать</button>
         <div id="version">Версия: 1.3</div>
-    </div>
-    <div id="progressContainer" style="display:none;">
-        <div id="progressBar"></div>
     </div>
     <canvas id="canvas"></canvas>
 
@@ -117,8 +84,6 @@
         const versionDiv = document.getElementById('version');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -141,10 +106,11 @@
         let gestureBuffer = [];
         const GESTURE_BUFFER_SIZE = 150;
         const CIRCLE_DETECTION_THRESHOLD = 60;
-        const SALUTE_FRACTION = 0.25; // Четверть экрана – порог
 
+        // Флаги для нажатия и возврата шарика
         let isPressed = false;
 
+        // События нажатия/отжатия для контроля "isPressed"
         function onPointerDown() {
             isPressed = true;
         }
@@ -194,13 +160,14 @@
         }
 
         function update() {
-            // Если экран не нажат, возвращаем шарик к центру
+            // Если экран не нажат, стремимся вернуть шарик к центру плавно
             if (!isPressed) {
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
 
                 const dx = centerX - ball.x;
                 const dy = centerY - ball.y;
+                // Немного ускоряем шарик к центру, чтобы он постепенно возвращался
                 velocity.x += dx * 0.01; 
                 velocity.y += dy * 0.01; 
             }
@@ -272,34 +239,18 @@
                     gestureBuffer.shift();
                 }
 
-                // Обновляем прогресс, если у нас достаточно данных
-                if (gestureBuffer.length === GESTURE_BUFFER_SIZE) {
-                    const diameter = estimateGestureDiameter(gestureBuffer);
-                    const minScreenDim = Math.min(canvas.width, canvas.height);
-                    const targetDiameter = minScreenDim * SALUTE_FRACTION;
-                    let progress = diameter / targetDiameter;
-                    if (progress > 1) progress = 1;
-                    updateProgressBar(progress * 100);
-                }
-
                 if (detectCircleGesture(gestureBuffer)) {
+                    drawCircleSilhouette(canvas.width / 2, canvas.height / 2, 100);
                     // Проверяем размер "окружности"
                     const diameter = estimateGestureDiameter(gestureBuffer);
                     const minScreenDim = Math.min(canvas.width, canvas.height);
-                    if (diameter >= minScreenDim * SALUTE_FRACTION) {
-                        // Показываем силуэт круга
-                        drawCircleSilhouette(canvas.width / 2, canvas.height / 2, 100);
-                        // Запускаем салют
+                    if (diameter >= minScreenDim * 0.25) {
                         triggerFireworks(canvas.width / 2, canvas.height / 2);
-
-                        // Сбрасываем прогресс
-                        updateProgressBar(0);
-                        gestureBuffer = [];
-                    } else {
-                        // Если круг обнаружен, но диаметр мал - сбрасываем данные
-                        gestureBuffer = [];
-                        updateProgressBar(0);
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200);
+                        }
                     }
+                    gestureBuffer = [];
                 }
             }
         }
@@ -325,10 +276,17 @@
             return avgVariance > CIRCLE_DETECTION_THRESHOLD;
         }
 
+        // Оценка примерного диаметра жеста по позициям шарика за время жеста
+        // Для простоты возьмём положения шара из следа за последнее время
+        // или же просто по ускорениям оценим амплитуду. Для приближённости:
+        // мы можем взять min и max X/Y из gestureBuffer и посчитать размах.
         function estimateGestureDiameter(buffer) {
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity;
 
+            // Используем изменения по ускорениям как индикатор размаха.
+            // В реальном случае лучше отслеживать саму позицию шарика за время жеста.
+            // Но здесь мы упростим логику:
             buffer.forEach(point => {
                 if (point.x < minX) minX = point.x;
                 if (point.x > maxX) maxX = point.x;
@@ -338,11 +296,16 @@
 
             const rangeX = maxX - minX;
             const rangeY = maxY - minY;
-            const scaleFactor = 50; 
+            // Оценим "диаметр" как усреднение диапазонов, умноженных на некий масштаб.
+            // Так как это очень приблизительно, можно просто взять max(rangeX, rangeY) * некий коэффициент.
+            // Предположим, что ускорения пропорциональны смещениям.
+            // Для наглядности возьмём коэффициент, скажем, 50, чтобы перевести ускорение в некий экранный "диаметр".
+            const scaleFactor = 50;
             const diameterEstimate = Math.max(rangeX, rangeY) * scaleFactor;
             return diameterEstimate;
         }
 
+        // Функция для запуска "салюта"
         function triggerFireworks(x, y) {
             const particles = 20;
             for (let i = 0; i < particles; i++) {
@@ -360,22 +323,13 @@
                 firework.style.setProperty('--dy', dy + 'px');
                 document.body.appendChild(firework);
 
+                // Удаляем элемент по окончании анимации
                 setTimeout(() => {
                     if (document.body.contains(firework)) {
                         document.body.removeChild(firework);
                     }
                 }, 1000);
             }
-        }
-
-        // Функция для обновления прогресс-бара
-        function updateProgressBar(percent) {
-            if (percent > 0) {
-                progressContainer.style.display = 'block';
-            } else {
-                progressContainer.style.display = 'none';
-            }
-            progressBar.style.width = percent + '%';
         }
 
         function requestMotionPermission() {
