@@ -17,22 +17,32 @@
         #canvas {
             display: block;
         }
-        #startButton {
+        #controls {
             position: absolute;
-            top: 50%;
+            top: 20px;
             left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 20px 40px;
-            font-size: 24px;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        #startButton {
+            padding: 15px 30px;
+            font-size: 20px;
             color: #fff;
             background-color: #007BFF;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
-            z-index: 10;
+            margin-bottom: 10px;
         }
         #startButton:active {
             background-color: #0056b3;
+        }
+        #version {
+            font-size: 16px;
+            color: #ccc;
         }
         .circle-silhouette {
             position: absolute;
@@ -48,11 +58,15 @@
     </style>
 </head>
 <body>
-    <button id="startButton">Начать</button>
+    <div id="controls">
+        <button id="startButton">Начать</button>
+        <div id="version">Версия: 1.2</div>
+    </div>
     <canvas id="canvas"></canvas>
 
     <script>
         const startButton = document.getElementById('startButton');
+        const versionDiv = document.getElementById('version');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
@@ -75,23 +89,23 @@
 
         // Параметры движения
         let velocity = { x: 0, y: 0 };
-        const friction = 0.98; // Для замедления движения
+        const friction = 0.95; // Для замедления движения (уменьшено для более плавного затухания)
 
         // Для обнаружения кругового жеста
         let gestureBuffer = [];
-        const GESTURE_BUFFER_SIZE = 100; // Количество записей в буфере
-        const CIRCLE_DETECTION_THRESHOLD = 50; // Порог для обнаружения круга
+        const GESTURE_BUFFER_SIZE = 150; // Увеличен размер буфера для лучшего захвата жеста
+        const CIRCLE_DETECTION_THRESHOLD = 60; // Порог для обнаружения круга
 
         // Функция рисования шарика и следа
         function draw() {
             // Добавление текущей позиции в след
             ball.trail.push({ x: ball.x, y: ball.y });
-            if (ball.trail.length > 50) { // Ограничение длины следа
+            if (ball.trail.length > 100) { // Увеличено ограничение длины следа для плавности
                 ball.trail.shift();
             }
 
             // Очистка канваса с частичной прозрачностью для создания эффекта следа
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Уменьшена прозрачность для более длительного следа
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Рисование следа
@@ -101,7 +115,7 @@
                 for (let i = 1; i < ball.trail.length; i++) {
                     ctx.lineTo(ball.trail[i].x, ball.trail[i].y);
                 }
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; // Уменьшена непрозрачность следа
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
@@ -122,22 +136,9 @@
             velocity.x *= friction;
             velocity.y *= friction;
 
-            // Ограничение шарика внутри канваса
-            if (ball.x < ball.radius) {
-                ball.x = ball.radius;
-                velocity.x = -velocity.x;
-            } else if (ball.x > canvas.width - ball.radius) {
-                ball.x = canvas.width - ball.radius;
-                velocity.x = -velocity.x;
-            }
-
-            if (ball.y < ball.radius) {
-                ball.y = ball.radius;
-                velocity.y = -velocity.y;
-            } else if (ball.y > canvas.height - ball.radius) {
-                ball.y = canvas.height - ball.radius;
-                velocity.y = -velocity.y;
-            }
+            // Ограничение шарика внутри канваса без отскока
+            ball.x = Math.max(ball.radius, Math.min(canvas.width - ball.radius, ball.x));
+            ball.y = Math.max(ball.radius, Math.min(canvas.height - ball.radius, ball.y));
         }
 
         // Главный цикл анимации
@@ -159,7 +160,9 @@
 
             // Удаление круга после анимации
             setTimeout(() => {
-                document.body.removeChild(circle);
+                if (document.body.contains(circle)) {
+                    document.body.removeChild(circle);
+                }
             }, 5000); // Длительность анимации совпадает с CSS
         }
 
@@ -168,8 +171,8 @@
             const acceleration = event.acceleration;
             if (acceleration) {
                 // Инвертируем оси для более интуитивного управления
-                velocity.x += acceleration.x * 0.5;
-                velocity.y -= acceleration.y * 0.5;
+                velocity.x += acceleration.x * 0.2; // Уменьшен коэффициент для медленной реакции
+                velocity.y -= acceleration.y * 0.2;
 
                 // Добавление данных в буфер для обнаружения жеста
                 gestureBuffer.push({ x: acceleration.x, y: acceleration.y });
