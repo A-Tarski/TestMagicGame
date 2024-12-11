@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Движение Шарика</title>
+    <title>Движение Шарика в Невесомости</title>
     <style>
         body, html {
             margin: 0;
@@ -12,6 +12,7 @@
             background-color: #000;
             height: 100%;
             width: 100%;
+            position: relative;
         }
         #canvas {
             display: block;
@@ -28,9 +29,21 @@
             border: none;
             border-radius: 10px;
             cursor: pointer;
+            z-index: 10;
         }
         #startButton:active {
             background-color: #0056b3;
+        }
+        .circle-silhouette {
+            position: absolute;
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: fadeOut 5s forwards;
+        }
+        @keyframes fadeOut {
+            from { opacity: 0.7; }
+            to { opacity: 0; }
         }
     </style>
 </head>
@@ -64,6 +77,11 @@
         let velocity = { x: 0, y: 0 };
         const friction = 0.98; // Для замедления движения
 
+        // Для обнаружения кругового жеста
+        let gestureBuffer = [];
+        const GESTURE_BUFFER_SIZE = 100; // Количество записей в буфере
+        const CIRCLE_DETECTION_THRESHOLD = 50; // Порог для обнаружения круга
+
         // Функция рисования шарика и следа
         function draw() {
             // Добавление текущей позиции в след
@@ -72,19 +90,21 @@
                 ball.trail.shift();
             }
 
-            // Очистка канваса
+            // Очистка канваса с частичной прозрачностью для создания эффекта следа
             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Рисование следа
             ctx.beginPath();
-            ctx.moveTo(ball.trail[0].x, ball.trail[0].y);
-            for (let i = 1; i < ball.trail.length; i++) {
-                ctx.lineTo(ball.trail[i].x, ball.trail[i].y);
+            if (ball.trail.length > 1) {
+                ctx.moveTo(ball.trail[0].x, ball.trail[0].y);
+                for (let i = 1; i < ball.trail.length; i++) {
+                    ctx.lineTo(ball.trail[i].x, ball.trail[i].y);
+                }
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
             }
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
 
             // Рисование шарика
             ctx.beginPath();
@@ -127,14 +147,70 @@
             draw();
         }
 
+        // Функция для создания силуэта круга
+        function drawCircleSilhouette(x, y, radius) {
+            const circle = document.createElement('div');
+            circle.classList.add('circle-silhouette');
+            circle.style.width = `${radius * 2}px`;
+            circle.style.height = `${radius * 2}px`;
+            circle.style.left = `${x - radius}px`;
+            circle.style.top = `${y - radius}px`;
+            document.body.appendChild(circle);
+
+            // Удаление круга после анимации
+            setTimeout(() => {
+                document.body.removeChild(circle);
+            }, 5000); // Длительность анимации совпадает с CSS
+        }
+
         // Обработка событий движения
         function handleMotion(event) {
-            const acceleration = event.accelerationIncludingGravity;
+            const acceleration = event.acceleration;
             if (acceleration) {
                 // Инвертируем оси для более интуитивного управления
-                velocity.x += acceleration.x * 0.1;
-                velocity.y -= acceleration.y * 0.1;
+                velocity.x += acceleration.x * 0.5;
+                velocity.y -= acceleration.y * 0.5;
+
+                // Добавление данных в буфер для обнаружения жеста
+                gestureBuffer.push({ x: acceleration.x, y: acceleration.y });
+                if (gestureBuffer.length > GESTURE_BUFFER_SIZE) {
+                    gestureBuffer.shift();
+                }
+
+                // Проверка на круговой жест
+                if (detectCircleGesture(gestureBuffer)) {
+                    // Рисуем силуэт круга в центре экрана
+                    drawCircleSilhouette(canvas.width / 2, canvas.height / 2, 100);
+                    // Очищаем буфер, чтобы избежать повторных срабатываний
+                    gestureBuffer = [];
+                }
             }
+        }
+
+        // Функция для обнаружения кругового жеста
+        function detectCircleGesture(buffer) {
+            if (buffer.length < GESTURE_BUFFER_SIZE) return false;
+
+            // Расчёт средних значений ускорения
+            let sumX = 0, sumY = 0;
+            buffer.forEach(point => {
+                sumX += point.x;
+                sumY += point.y;
+            });
+            const avgX = sumX / buffer.length;
+            const avgY = sumY / buffer.length;
+
+            // Расчёт отклонений
+            let variance = 0;
+            buffer.forEach(point => {
+                const dx = point.x - avgX;
+                const dy = point.y - avgY;
+                variance += Math.sqrt(dx * dx + dy * dy);
+            });
+            const avgVariance = variance / buffer.length;
+
+            // Если среднее отклонение превышает порог, считаем, что есть жест
+            return avgVariance > CIRCLE_DETECTION_THRESHOLD;
         }
 
         // Запрос разрешения на доступ к датчикам движения
