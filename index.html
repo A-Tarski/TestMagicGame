@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Движение Шарика</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            height: 100%;
+            width: 100%;
+        }
+        #canvas {
+            display: block;
+        }
+        #startButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px;
+            color: #fff;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        #startButton:active {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <button id="startButton">Начать</button>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Установка размера канваса
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Начальные параметры шарика
+        let ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 20,
+            color: 'red',
+            trail: []
+        };
+
+        // Параметры движения
+        let velocity = { x: 0, y: 0 };
+        const friction = 0.98; // Для замедления движения
+
+        // Функция рисования шарика и следа
+        function draw() {
+            // Добавление текущей позиции в след
+            ball.trail.push({ x: ball.x, y: ball.y });
+            if (ball.trail.length > 50) { // Ограничение длины следа
+                ball.trail.shift();
+            }
+
+            // Очистка канваса
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Рисование следа
+            ctx.beginPath();
+            ctx.moveTo(ball.trail[0].x, ball.trail[0].y);
+            for (let i = 1; i < ball.trail.length; i++) {
+                ctx.lineTo(ball.trail[i].x, ball.trail[i].y);
+            }
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Рисование шарика
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+        }
+
+        // Обновление позиции шарика
+        function update() {
+            ball.x += velocity.x;
+            ball.y += velocity.y;
+
+            // Применение трения
+            velocity.x *= friction;
+            velocity.y *= friction;
+
+            // Ограничение шарика внутри канваса
+            if (ball.x < ball.radius) {
+                ball.x = ball.radius;
+                velocity.x = -velocity.x;
+            } else if (ball.x > canvas.width - ball.radius) {
+                ball.x = canvas.width - ball.radius;
+                velocity.x = -velocity.x;
+            }
+
+            if (ball.y < ball.radius) {
+                ball.y = ball.radius;
+                velocity.y = -velocity.y;
+            } else if (ball.y > canvas.height - ball.radius) {
+                ball.y = canvas.height - ball.radius;
+                velocity.y = -velocity.y;
+            }
+        }
+
+        // Главный цикл анимации
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            draw();
+        }
+
+        // Обработка событий движения
+        function handleMotion(event) {
+            const acceleration = event.accelerationIncludingGravity;
+            if (acceleration) {
+                // Инвертируем оси для более интуитивного управления
+                velocity.x += acceleration.x * 0.1;
+                velocity.y -= acceleration.y * 0.1;
+            }
+        }
+
+        // Запрос разрешения на доступ к датчикам движения
+        function requestMotionPermission() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('devicemotion', handleMotion);
+                            startButton.style.display = 'none';
+                            animate();
+                        } else {
+                            alert('Доступ к датчикам движения отклонён.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Ошибка запроса разрешения:', error);
+                        alert('Произошла ошибка при запросе доступа к датчикам движения.');
+                    });
+            } else {
+                // Для устройств, не требующих разрешения
+                window.addEventListener('devicemotion', handleMotion);
+                startButton.style.display = 'none';
+                animate();
+            }
+        }
+
+        // Обработчик нажатия кнопки "Начать"
+        startButton.addEventListener('click', requestMotionPermission);
+    </script>
+</body>
+</html>
