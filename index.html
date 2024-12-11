@@ -70,11 +70,11 @@
     <script>
         const startButton = document.getElementById('startButton');
         const controlButton = document.getElementById('controlButton');
-        const versionDiv = document.getElementById('version');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
         let isControlling = false;
+        let hasCompletedCircle = false;
 
         // Установка размера канваса
         function resizeCanvas() {
@@ -89,8 +89,9 @@
             x: canvas.width / 2,
             y: canvas.height / 2,
             radius: 20,
-            color: 'radial-gradient(circle, rgba(255,0,150,1) 0%, rgba(0,204,255,1) 100%)',
-            trail: []
+            trail: [],
+            homeX: canvas.width / 2,
+            homeY: canvas.height / 2
         };
 
         // Параметры движения
@@ -98,6 +99,11 @@
         const friction = 0.96;
         const accelerationFactor = 0.15;
         const stopThreshold = 0.05; // Порог для остановки шарика
+        const returnSpeed = 0.02;  // Скорость возврата к центру
+
+        function distance(x1, y1, x2, y2) {
+            return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+        }
 
         // Функция рисования шарика и следа
         function draw() {
@@ -134,6 +140,12 @@
         }
 
         function update() {
+            if (!isControlling) {
+                // Возвращение шарика в центр
+                velocity.x += (ball.homeX - ball.x) * returnSpeed;
+                velocity.y += (ball.homeY - ball.y) * returnSpeed;
+            }
+
             ball.x += velocity.x;
             ball.y += velocity.y;
 
@@ -144,21 +156,58 @@
             if (Math.abs(velocity.x) < stopThreshold) velocity.x = 0;
             if (Math.abs(velocity.y) < stopThreshold) velocity.y = 0;
 
-            if (ball.x < ball.radius) {
-                ball.x = ball.radius;
-                velocity.x = 0;
-            } else if (ball.x > canvas.width - ball.radius) {
-                ball.x = canvas.width - ball.radius;
-                velocity.x = 0;
+            // Проверка на полный круг
+            if (!hasCompletedCircle && distance(ball.x, ball.y, ball.homeX, ball.homeY) < ball.radius) {
+                hasCompletedCircle = true;
+                triggerCelebration();
+            } else if (hasCompletedCircle && distance(ball.x, ball.y, ball.homeX, ball.homeY) > ball.radius * 2) {
+                hasCompletedCircle = false;
+            }
+        }
+
+        function triggerCelebration() {
+            navigator.vibrate(300);
+            for (let i = 0; i < 20; i++) {
+                createParticle(ball.x, ball.y);
+            }
+        }
+
+        function createParticle(x, y) {
+            const particle = {
+                x,
+                y,
+                radius: Math.random() * 5 + 2,
+                color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                velocity: {
+                    x: Math.random() * 4 - 2,
+                    y: Math.random() * 4 - 2
+                },
+                life: 100
+            };
+
+            function drawParticle() {
+                if (particle.life <= 0) return;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                ctx.fillStyle = particle.color;
+                ctx.fill();
             }
 
-            if (ball.y < ball.radius) {
-                ball.y = ball.radius;
-                velocity.y = 0;
-            } else if (ball.y > canvas.height - ball.radius) {
-                ball.y = canvas.height - ball.radius;
-                velocity.y = 0;
+            function updateParticle() {
+                particle.x += particle.velocity.x;
+                particle.y += particle.velocity.y;
+                particle.life--;
             }
+
+            function animateParticle() {
+                if (particle.life > 0) {
+                    drawParticle();
+                    updateParticle();
+                    requestAnimationFrame(animateParticle);
+                }
+            }
+
+            animateParticle();
         }
 
         function animate() {
